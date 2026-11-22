@@ -1,0 +1,7 @@
+{
+  "version": "0.1.0",
+  "urls": [
+    ["rollercan.py", "rollercan.py"],
+    ["licenses/micropython-rollercan.txt", "LICENSE"]
+  ]
+}
