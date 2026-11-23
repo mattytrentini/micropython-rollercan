@@ -117,7 +117,31 @@ def test_timeout():
     assert len(bus.sent) == 1
 
 
+def test_status_without_feedback():
+    class RegisterBus(Bus):
+        registers = {0x7004: 0, 0x7005: 1, 0x7030: -125, 0x7031: 27525,
+                     0x7032: 24, 0x7034: 1386}
+
+        def send(self, can_id, payload, flags):
+            if can_id == 0x110000A8:
+                reg = payload[0] | payload[1] << 8
+                if reg in self.registers:
+                    self.replies = [(can_id, pack("<H2xi", reg, self.registers[reg]), flags)]
+            else:
+                assert can_id == 0x020000A8, "status must not send a write or motion command"
+            return super().send(can_id, payload, flags)
+
+    bus = RegisterBus()
+    motor = RollerCAN(bus, timeout_ms=10)
+    assert motor.status() == (motor.STANDBY, motor.SPEED, None, -1.25, 275.25, 0.24, 13.86)
+    bus.registers[0x7004] = 1
+    assert motor.status().state == motor.RUNNING
+    del bus.registers[0x7034]
+    raises_errno(motor.status, ETIMEDOUT)
+
+
 test_motion_commands()
 test_read_matching()
 test_timeout()
+test_status_without_feedback()
 print("RollerCAN motion frames, reply matching and timeout handling passed")

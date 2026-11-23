@@ -17,6 +17,10 @@ _FEEDBACK_MASK = 0x1F00FFFF  # Command, motor ID and host ID; not status bits.
 _ID_MASK = 0x1FFFFFFF
 
 
+class _NoReply(OSError):
+    pass
+
+
 class RollerCAN:
     """One motor on an initialized Classic CAN controller.
 
@@ -84,7 +88,7 @@ class RollerCAN:
                 if register is not None and (payload[0] | (payload[1] << 8)) != register:
                     continue
                 return rx
-            raise OSError(ETIMEDOUT, "no matching RollerCAN reply")
+            raise _NoReply(ETIMEDOUT, "no matching RollerCAN reply")
         except BaseException:
             # A queued command may still be pending if the bus is disconnected.
             try:
@@ -117,8 +121,21 @@ class RollerCAN:
         return self._node_id
 
     def status(self):
-        """Return the motor's state, fault bits and whole-unit telemetry."""
-        return self._feedback(0x02)
+        """Return motor feedback; faults are None if the firmware lacks status replies."""
+        try:
+            return self._feedback(0x02)
+        except _NoReply:
+            # Some firmware only returns feedback for writes. Read back
+            # without issuing a motion command or guessing any fault bits.
+            return Feedback(
+                self.RUNNING if self._read_i32(0x7004) else self.STANDBY,
+                self._read_i32(0x7005),
+                None,
+                self.speed(),
+                self.position(),
+                self.current(),
+                self.voltage(),
+            )
 
     def start(self):
         """Enable output in the currently configured mode and return feedback."""
